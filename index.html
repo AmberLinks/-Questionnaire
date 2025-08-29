@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>動物病院 初診問診票</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans JP', sans-serif; }
+
+        /* --- CDNでも動く素のCSS --- */
+        .form-input, .form-select, .form-textarea {
+            width: 100%; border: 1px solid #d1d5db; border-radius: 0.5rem;
+            padding: 0.75rem; transition: box-shadow .2s, border-color .2s;
+        }
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
+            outline: none; border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,.3);
+        }
+        .form-textarea { min-height: 120px; }
+
+        .choice-label {
+            display: block; border: 1px solid #d1d5db; border-radius: 0.5rem;
+            padding: 1rem; text-align: center; cursor: pointer;
+            transition: background-color .2s, color .2s, border-color .2s;
+        }
+        input[type="radio"]:checked + .choice-label,
+        input[type="checkbox"]:checked + .choice-label {
+            background: #2563eb; color: #fff; border-color: #2563eb;
+            box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(37,99,235,.35);
+        }
+
+        .step { display: none; }
+        .step.active { display: block; }
+
+        /* --- 同意事項：改行・折返しが確実に効く --- */
+        .consent-label {
+            display: flex; align-items: flex-start; gap: 0.75rem;
+            padding: 1rem; border: 1px solid #e5e7eb; border-radius: 0.5rem;
+            transition: background-color .2s;
+        }
+        .consent-label:hover { background: #f9fafb; }
+        .consent-checkbox { margin-top: 0.25rem; width: 1.25rem; height: 1.25rem; flex-shrink: 0; }
+        .consent-text {
+            flex: 1 1 auto; min-width: 0;
+            white-space: normal; overflow-wrap: anywhere; line-height: 1.6;
+        }
+
+        /* 印刷プレビュー */
+        .print-view-section { border-bottom: 1px solid #e5e7eb; padding-bottom: 1.5rem; margin-bottom: 1.5rem; }
+        .print-view-section:last-child { border-bottom: none; }
+        .print-view-input { border-bottom: 1px solid #9ca3af; padding: 0.5rem 0.1rem; }
+        .print-view-textarea { border: 1px solid #9ca3af; min-height: 100px; width: 100%; margin-top: 0.5rem; }
+        .print-view-choice { border: 1px solid #9ca3af; padding: 0.5rem; display: inline-block; margin-right: 0.5rem; margin-top: 0.5rem; }
+
+        @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .no-print { display: none !important; }
+            #web-form-container, #initial-choice-screen { display: none !important; }
+            #print-form-container { display: block !important; }
+            .container { box-shadow: none; border: none; margin: 0; max-width: 100%; padding: 0;}
+            .print-view-input { border-bottom: 1px solid #666 !important; }
+            .print-view-choice, .print-view-textarea { border: 1px solid #666 !important; }
+            h1, h2, h3 { color: #000 !important; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div class="container mx-auto max-w-3xl p-4 sm:p-8 bg-white rounded-xl shadow-lg my-8">
+        
+        <!-- ===== 初期選択画面 ===== -->
+        <div id="initial-choice-screen" class="text-center py-10">
+            <i class="fas fa-file-medical text-blue-500 text-6xl mb-4"></i>
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">初診問診票</h1>
+            <p class="text-gray-600 mb-8">記入方法を選択してください</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-lg mx-auto">
+                <button id="start-web-btn" class="bg-blue-600 text-white font-bold py-6 px-8 rounded-lg hover:bg-blue-700 transition-all duration-300 transform hover:scale-105 shadow-lg">
+                    <i class="fas fa-desktop mr-3 fa-lg"></i>WEBで入力する
+                </button>
+                <button id="start-print-btn" class="bg-gray-700 text-white font-bold py-6 px-8 rounded-lg hover:bg-gray-800 transition-all duration-300 transform hover:scale-105 shadow-lg">
+                    <i class="fas fa-print mr-3 fa-lg"></i>紙に印刷して記入する
+                </button>
+            </div>
+        </div>
+
+        <!-- ===== WEB入力フォームコンテナ ===== -->
+        <div id="web-form-container" class="hidden">
+            <header class="flex justify-between items-center mb-6 no-print">
+                <h1 class="text-2xl sm:text-3xl font-bold text-gray-700">初診問診票 (WEB入力)</h1>
+                <button id="web-back-to-choice-btn" class="text-gray-500 hover:text-blue-600 transition-colors"><i class="fas fa-arrow-left fa-lg mr-2"></i>選択に戻る</button>
+            </header>
+            <div class="w-full bg-gray-200 rounded-full h-2.5 mb-8 no-print">
+                <div id="progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+            <form id="medical-form" class="space-y-8">
+                <!-- ステップ 1: 同意事項 -->
+                <div id="step-1" class="step">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2"><i class="fas fa-check-double mr-2"></i>夜間診療に関する同意事項</h2>
+                    <p class="text-gray-600 mb-6">以下のすべての項目をご確認の上、同意のチェックをお願いします。</p>
+                    <div id="consent-list" class="space-y-4">
+                        <h3 class="font-bold text-lg text-gray-700 mt-6">＜診療について＞</h3>
+                        <label class="consent-label"><input type="checkbox" name="consent" class="consent-checkbox"><span class="consent-text">問診票をご記入いただいている間にも動物の状態に応じて処置を優先することがございます。その際の診療費用は概算をお伝えしますが前後する場合もございます。</span></label>
+                        <label class="consent-label"><input type="checkbox" name="consent" class="consent-checkbox"><span class="consent-text">夜間の診療は最低人数で対応をさせていただいております。動物の状況や設備、人員の問題で、当院での治療が難しいと判断した場合近隣の受け入れ可能な夜間救急動物病院への転院をお願いする場合があります。</span></label>
+                        <label class="consent-label"><input type="checkbox" name="consent" class="consent-checkbox"><span class="consent-text">動物の性格や咬んでしまう場合、激しく抵抗してしまう場合には診察が難しい場合があります。</span></label>
+                        <label class="consent-label"><input type="checkbox" name="consent" class="consent-checkbox"><span class="consent-text">診察の順番は重症度によって前後する場合があります。</span></label>
+                        <label class="consent-label"><input type="checkbox" name="consent" class="consent-checkbox"><span class="consent-text">病院のセキュリティ上診療中は許可がない限り院内での待機をお願いします。</span></label>
+                        <label class="consent-label"><input type="checkbox" name="consent" class="consent-checkbox"><span class="consent-text">災害等の不可抗力による予測不能な不慮の事故、損傷、死亡、失踪が起こる可能性があります。</span></label>
+                        <label class="consent-label"><input type="checkbox" name="consent" class="consent-checkbox"><span class="consent-text">夜間の対応として実施しているため診断をつけるのに必要な検査全てが行えない場合がございます。必ず診断をつけるものではなく、応急処置のみの対応になる場合もあることをご理解ください。</span></label>
+                        <label class="consent-label"><input type="checkbox" name="consent" class="consent-checkbox"><span class="consent-text">診察中の写真撮影や動画撮影は許可なく行わないようお願いします。状況に応じては診察をお断りすることがあります。</span></label>
+                        <label class="consent-label"><input type="checkbox" name="consent" class="consent-checkbox"><span class="consent-text">エキゾチックアニマルなどの場合には特に、治療や検査の前に酸素室での一時入院が必要な場合があります。（別途費用）</span></label>
+                        <h3 class="font-bold text-lg text-gray-700 pt-6">＜診療費について＞</h3>
+                        <label class="consent-label"><input type="checkbox" name="consent" class="consent-checkbox"><span class="consent-text">診療費は当日のお支払いとなります。</span></label>
+                        <label class="consent-label"><input type="checkbox" name="consent" class="consent-checkbox"><span class="consent-text">防犯の観点と会計上の観点からキャッシュレスでの決済をお願いしております。ご協力お願いいたします。</span></label>
+                        <label class="consent-label"><input type="checkbox" name="consent" class="consent-checkbox"><span class="consent-text">飼い主様のいない動物（保護されたばかりの子など）の診療をご希望の場合、動物の引き取り、費用のお支払いは連れてこられた方の責任となります。</span></label>
+                        <label class="consent-label"><input type="checkbox" name="consent" class="consent-checkbox"><span class="consent-text">野生鳥獣の診察は一切行っておりません（鳥獣保護管理法に基づき）。来院時に発覚した場合、診察をお断りさせていただくことをご了承ください。</span></label>
+                    </div>
+                </div>
+
+                <!-- ステップ 2: 飼い主情報 -->
+                <div id="step-2" class="step">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2"><i class="fas fa-user mr-2"></i>飼い主様の情報</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div><label for="owner-name" class="font-medium text-gray-700">氏名 <span class="text-red-500">*</span></label><input type="text" id="owner-name" name="ownerName" class="form-input mt-1" required></div>
+                        <div><label for="owner-name-kana" class="font-medium text-gray-700">フリガナ <span class="text-red-500">*</span></label><input type="text" id="owner-name-kana" name="ownerNameKana" class="form-input mt-1" required></div>
+                        <div class="md:col-span-2"><label for="address" class="font-medium text-gray-700">住所 <span class="text-red-500">*</span></label><input type="text" id="address" name="address" class="form-input mt-1" required></div>
+                        <div><label for="phone" class="font-medium text-gray-700">電話番号 <span class="text-red-500">*</span></label><input type="tel" id="phone" name="phone" class="form-input mt-1" required></div>
+                        <div><label for="email" class="font-medium text-gray-700">メールアドレス</label><input type="email" id="email" name="email" class="form-input mt-1"></div>
+                    </div>
+                </div>
+
+                <!-- ステップ 3: 動物の情報 -->
+                <div id="step-3" class="step">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2"><i class="fas fa-paw mr-2"></i>動物の情報</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div><label for="pet-name" class="font-medium text-gray-700">名前 <span class="text-red-500">*</span></label><input type="text" id="pet-name" name="petName" class="form-input mt-1" required></div>
+                        <div><label for="pet-name-kana" class="font-medium text-gray-700">フリガナ <span class="text-red-500">*</span></label><input type="text" id="pet-name-kana" name="petNameKana" class="form-input mt-1" required></div>
+                        <div class="md:col-span-2"><label for="animal-type" class="font-medium text-gray-700">動物の種類 <span class="text-red-500">*</span></label><select id="animal-type" name="animalType" class="form-select mt-1" required><option value="">選択してください</option><option value="dog">犬</option><option value="cat">猫</option><option value="rabbit">うさぎ</option><option value="small_mammal">小型哺乳類</option><option value="bird">鳥類</option><option value="reptile_amphibian">爬虫類・両生類</option></select></div>
+                        <div class="md:col-span-2"><label for="pet-breed" class="font-medium text-gray-700">種類詳細（犬種、猫種など） <span class="text-red-500">*</span></label><input type="text" id="pet-breed" name="petBreed" class="form-input mt-1" required></div>
+                        <div class="md:col-span-2"><label class="font-medium text-gray-700">性別 <span class="text-red-500">*</span></label><div class="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-2"><label><input type="radio" name="sex" value="male_neutered" class="sr-only" required><span class="choice-label">オス(去勢済)</span></label><label><input type="radio" name="sex" value="male_intact" class="sr-only"><span class="choice-label">オス(未去勢)</span></label><label><input type="radio" name="sex" value="female_spayed" class="sr-only"><span class="choice-label">メス(避妊済)</span></label><label><input type="radio" name="sex" value="female_intact" class="sr-only"><span class="choice-label">メス(未避妊)</span></label><label><input type="radio" name="sex" value="unknown" class="sr-only"><span class="choice-label">不明</span></label></div></div>
+                        <div><label for="pet-birthdate" class="font-medium text-gray-700">生年月日</label><input type="date" id="pet-birthdate" name="petBirthdate" class="form-input mt-1"></div>
+                        <div><label for="pet-estimated-age" class="font-medium text-gray-700">または推定年齢</label><input type="text" id="pet-estimated-age" name="petEstimatedAge" class="form-input mt-1" placeholder="例: 5歳くらい"></div>
+                        <div class="md:col-span-2"><label class="font-medium text-gray-700">ペット保険の加入</label><div class="flex gap-4 mt-2"><label><input type="radio" name="insurance_status" value="yes" class="sr-only"><span class="choice-label px-8">あり</span></label><label><input type="radio" name="insurance_status" value="no" class="sr-only" checked=""><span class="choice-label px-8">なし</span></label></div></div>
+                        <div id="insurance-company-container" class="md:col-span-2 hidden"><label for="insurance_company" class="font-medium text-gray-700">保険会社名</label><input type="text" id="insurance_company" name="insurance_company" class="form-input mt-1"></div>
+                    </div>
+                </div>
+
+                <!-- ステップ 4: 主訴・基本情報 -->
+                <div id="step-4" class="step">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2"><i class="fas fa-notes-medical mr-2"></i>今回の症状と基本情報</h2>
+                    <div class="space-y-6">
+                        <div><label for="chief-complaint" class="font-medium text-gray-700">今回の主訴 <span class="text-red-500">*</span></label><textarea id="chief-complaint" name="chiefComplaint" class="form-textarea mt-1" placeholder="いつから、どこが、どのようになど、思い当たるきっかけと合わせてご記入ください。" required></textarea></div>
+                        <div><label class="font-medium text-gray-700">外出歴 <span class="text-red-500">*</span></label><div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2"><label><input type="radio" name="outdoor-history" value="indoor_no_walk" class="sr-only" required><span class="choice-label">完全室内(散歩無)</span></label><label><input type="radio" name="outdoor-history" value="indoor_with_walk" class="sr-only"><span class="choice-label">完全室内(散歩有)</span></label><label><input type="radio" name="outdoor-history" value="outdoor" class="sr-only"><span class="choice-label">外飼い</span></label><label><input type="radio" name="outdoor-history" value="free_roaming" class="sr-only"><span class="choice-label">放し飼い</span></label></div></div>
+                        <div><label class="font-medium text-gray-700">食事内容 <span class="text-red-500">*</span></label><div class="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2"><label><input type="checkbox" name="food_type" value="dry" class="sr-only"><span class="choice-label">ドライ</span></label><label><input type="checkbox" name="food_type" value="wet" class="sr-only"><span class="choice-label">ウェット</span></label><label><input type="checkbox" name="food_type" value="handmade" class="sr-only"><span class="choice-label">手作り</span></label></div><input type="text" name="food_details" class="form-input mt-2" placeholder="フードの製品名、手作りの内容、回数など"></div>
+                    </div>
+                </div>
+
+                <!-- ステップ 5: 詳細情報 -->
+                <div id="step-5" class="step">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2"><i class="fas fa-stethoscope mr-2"></i>詳細情報</h2>
+                    <div class="space-y-6">
+                        <div><label for="past-illness" class="font-medium text-gray-700">過去の疾患（怪我・病気など）</label><textarea id="past-illness" name="pastIllness" class="form-textarea mt-1"></textarea></div>
+                        <div><label class="font-medium text-gray-700">他の動物との同居</label><div class="flex gap-4 mt-2"><label><input type="radio" name="cohabitation" value="yes" class="sr-only"><span class="choice-label px-8">あり</span></label><label><input type="radio" name="cohabitation" value="no" class="sr-only" checked=""><span class="choice-label px-8">なし</span></label></div><div id="cohabitation-details-container" class="hidden mt-2"><label for="cohabitation_details" class="font-medium text-gray-700">同居動物について詳しく教えてください</label><textarea id="cohabitation_details" name="cohabitation_details" class="form-textarea mt-1" placeholder="種類、年齢、頭数など"></textarea></div></div>
+                        <div><label class="font-medium text-gray-700">当院をどこで知りましたか？</label><div class="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2"><label><input type="checkbox" name="how_heard" value="hp" class="sr-only"><span class="choice-label">HP</span></label><label><input type="checkbox" name="how_heard" value="neighborhood" class="sr-only"><span class="choice-label">近所</span></label><label><input type="checkbox" name="how_heard" value="acquaintance" class="sr-only"><span class="choice-label">知人</span></label><label><input type="checkbox" name="how_heard" value="flyer" class="sr-only"><span class="choice-label">広告チラシ</span></label></div><input type="text" name="how_heard_other" class="form-input mt-2" placeholder="その他"></div>
+                    </div>
+                    
+                    <div id="exotic-consent-section" class="hidden mt-6 p-4 border-2 border-red-200 rounded-lg bg-red-50"><h3 class="text-lg font-semibold text-red-800 mb-4"><i class="fas fa-exclamation-triangle mr-2"></i>犬猫以外の動物の診療に関する追加同意事項</h3><div class="space-y-4"><label class="consent-label !border-red-200"><input type="checkbox" name="exotic_consent" class="consent-checkbox"><span class="consent-text">エキゾチック動物（犬猫以外の動物）は体格・体力や動物種ごとの性質などから体調が急変する可能性があります。経験を積んだ獣医師が細心の注意を持って処置、検査を実施しておりますが、処置や検査自体にリスクが伴うことを十分ご理解いただくことをお願いいたします。</span></label><label class="consent-label !border-red-200"><input type="checkbox" name="exotic_consent" class="consent-checkbox"><span class="consent-text">検査や処置の内容によってはお預かりの上で実施させて頂く場合がございますが、その点もご理解とご協力をお願いいたします。</span></label></div></div>
+
+                    <!-- ===== 動物種別質問エリア ===== -->
+                    <div id="dog-cat-section" class="animal-specific-section mt-6 hidden"><h3 class="text-lg font-semibold text-gray-700 mt-6 border-l-4 border-blue-500 pl-3 mb-4">予防歴（犬・猫）</h3><div class="space-y-4"><label class="font-medium text-gray-700">混合ワクチン</label><div class="flex gap-4 mt-1"><label><input type="radio" name="dog_cat_mixed_vaccine" value="yes" class="sr-only"><span class="choice-label px-6">あり</span></label><label><input type="radio" name="dog_cat_mixed_vaccine" value="no" class="sr-only"><span class="choice-label px-6">なし</span></label><input type="text" name="dog_cat_mixed_vaccine_detail" class="form-input w-40" placeholder="何種混合"></div><label class="font-medium text-gray-700">狂犬病ワクチン (犬)</label><div class="flex gap-4 mt-1"><label><input type="radio" name="dog_rabies_vaccine" value="yes" class="sr-only"><span class="choice-label px-6">あり</span></label><label><input type="radio" name="dog_rabies_vaccine" value="no" class="sr-only"><span class="choice-label px-6">なし</span></label></div><label class="font-medium text-gray-700">外部寄生虫予防</label><div class="flex gap-4 mt-1"><label><input type="radio" name="dog_cat_parasite" value="yes" class="sr-only"><span class="choice-label px-6">あり</span></label><label><input type="radio" name="dog_cat_parasite" value="no" class="sr-only"><span class="choice-label px-6">なし</span></label><input type="text" name="dog_cat_parasite_detail" class="form-input" placeholder="予防薬の名前"></div></div></div>
+                    <div id="rabbit-section" class="animal-specific-section mt-6 hidden"><h3 class="text-lg font-semibold text-gray-700 mt-6 border-l-4 border-emerald-500 pl-3 mb-4">うさぎの詳細情報</h3><div class="space-y-4"><label class="font-medium text-gray-700">飼育環境</label><div class="grid grid-cols-2 md:grid-cols-3 gap-2 mt-1"><label><input type="checkbox" name="rabbit_env" value="cage" class="sr-only"><span class="choice-label">ケージ</span></label><label><input type="checkbox" name="rabbit_env" value="free" class="sr-only"><span class="choice-label">放し飼い</span></label></div><input type="text" name="rabbit_env_floor" class="form-input mt-2" placeholder="床材の種類"><label class="font-medium text-gray-700">掃除頻度</label><input type="text" name="rabbit_cleaning" class="form-input mt-1" placeholder="例: 毎日、週に2回"><label class="font-medium text-gray-700">主食と嗜好性</label><div class="grid grid-cols-2 md:grid-cols-3 gap-2 mt-1"><label><input type="checkbox" name="rabbit_food" value="hay" class="sr-only"><span class="choice-label">牧草</span></label><label><input type="checkbox" name="rabbit_food" value="pellet" class="sr-only"><span class="choice-label">ペレット</span></label><label><input type="checkbox" name="rabbit_food" value="veg" class="sr-only"><span class="choice-label">野菜</span></label></div><input type="text" name="rabbit_food_pref" class="form-input mt-2" placeholder="よく食べるもの、食べないものなど"><label class="font-medium text-gray-700">盲腸便の食糞行動</label><div class="flex gap-4 mt-1"><label><input type="radio" name="rabbit_cecotrophy" value="yes" class="sr-only"><span class="choice-label px-6">あり</span></label><label><input type="radio" name="rabbit_cecotrophy" value="no" class="sr-only"><span class="choice-label px-6">なし</span></label></div><label class="font-medium text-gray-700">歯科処置歴</label><div class="flex gap-4 mt-1"><label><input type="radio" name="rabbit_dental" value="yes" class="sr-only"><span class="choice-label px-6">あり</span></label><label><input type="radio" name="rabbit_dental" value="no" class="sr-only"><span class="choice-label px-6">なし</span></label></div><label class="font-medium text-gray-700">過去の消化管うっ滞歴</label><div class="flex gap-4 mt-1"><label><input type="radio" name="rabbit_gi_stasis" value="yes" class="sr-only"><span class="choice-label px-6">あり</span></label><label><input type="radio" name="rabbit_gi_stasis" value="no" class="sr-only"><span class="choice-label px-6">なし</span></label></div><label class="font-medium text-gray-700">寄生虫予防</label><div class="flex gap-4 mt-1"><label><input type="radio" name="rabbit_parasite" value="yes" class="sr-only"><span class="choice-label px-6">あり</span></label><label><input type="radio" name="rabbit_parasite" value="no" class="sr-only"><span class="choice-label px-6">なし</span></label></div></div></div>
+                    <div id="small_mammal-section" class="animal-specific-section mt-6 hidden"><h3 class="text-lg font-semibold text-gray-700 mt-6 border-l-4 border-amber-500 pl-3 mb-4">小型哺乳類の詳細情報</h3><div class="space-y-4"><p class="font-medium text-gray-600">フェレットの場合:</p><label class="font-medium text-gray-700">ワクチン接種歴（犬ジステンパーなど）</label><div class="flex gap-4 mt-1"><label><input type="radio" name="ferret_vaccine" value="yes" class="sr-only"><span class="choice-label px-6">あり</span></label><label><input type="radio" name="ferret_vaccine" value="no" class="sr-only"><span class="choice-label px-6">なし</span></label></div><label class="font-medium text-gray-700">外部寄生虫予防歴</label><div class="flex gap-4 mt-1"><label><input type="radio" name="ferret_parasite" value="yes" class="sr-only"><span class="choice-label px-6">あり</span></label><label><input type="radio" name="ferret_parasite" value="no" class="sr-only"><span class="choice-label px-6">なし</span></label></div><p class="font-medium text-gray-600 pt-4 border-t mt-4">ハムスター・モルモット・チンチラ・デグーなどの場合:</p><label class="font-medium text-gray-700">飼育環境</label><input type="text" name="rodent_env" class="form-input mt-1" placeholder="床材・ケージの種類など"><label class="font-medium text-gray-700">掃除頻度</label><input type="text" name="rodent_cleaning" class="form-input mt-1"><label class="font-medium text-gray-700">食事内容</label><input type="text" name="rodent_food" class="form-input mt-1" placeholder="専用フード、シード、野菜、果物など"><label class="font-medium text-gray-700">活動パターン</label><div class="flex gap-4 mt-1"><label><input type="radio" name="rodent_activity" value="nocturnal" class="sr-only"><span class="choice-label px-6">夜行性</span></label><label><input type="radio" name="rodent_activity" value="diurnal" class="sr-only"><span class="choice-label px-6">昼行性</span></label></div><p class="font-medium text-gray-600 pt-4 border-t mt-4">その他の哺乳類:</p><label class="font-medium text-gray-700">食事内容と寄生虫予防歴</label><textarea name="other_mammal_details" class="form-textarea mt-1"></textarea></div></div>
+                    <div id="bird-section" class="animal-specific-section mt-6 hidden"><h3 class="text-lg font-semibold text-gray-700 mt-6 border-l-4 border-sky-500 pl-3 mb-4">鳥類の詳細情報</h3><div class="space-y-4"><label class="font-medium text-gray-700">飼育環境</label><input type="text" name="bird_env" class="form-input mt-1" placeholder="ケージの種類、放鳥時間、床材など"><label class="font-medium text-gray-700">掃除頻度</label><input type="text" name="bird_cleaning" class="form-input mt-1"><label class="font-medium text-gray-700">生活環境の温度・湿度</label><input type="text" name="bird_temp_humidity" class="form-input mt-1"><label class="font-medium text-gray-700">環境変化の有無</label><div class="flex gap-4 mt-1"><label><input type="radio" name="bird_env_change" value="yes" class="sr-only"><span class="choice-label px-6">あり</span></label><label><input type="radio" name="bird_env_change" value="no" class="sr-only"><span class="choice-label px-6">なし</span></label></div><input type="text" name="bird_env_change_detail" class="form-input mt-2" placeholder="引っ越し、新しい個体の導入など"><label class="font-medium text-gray-700">食事内容</label><input type="text" name="bird_food" class="form-input mt-1" placeholder="シード、ペレット、野菜、果物など"><label class="font-medium text-gray-700">産卵歴 (メスの場合)</label><div class="flex gap-4 mt-1"><label><input type="radio" name="bird_egg" value="yes" class="sr-only"><span class="choice-label px-6">あり</span></label><label><input type="radio" name="bird_egg" value="no" class="sr-only"><span class="choice-label px-6">なし</span></label><label><input type="radio" name="bird_egg" value="na" class="sr-only"><span class="choice-label px-6">不明/オス</span></label></div><div><label class="font-medium text-gray-700">感染症検査歴（PBFD, BFD, オウム病など）</label><div class="flex gap-4 mt-1"><label><input type="radio" name="bird_infection_test" value="yes" class="sr-only"><span class="choice-label px-6">あり</span></label><label><input type="radio" name="bird_infection_test" value="no" class="sr-only" checked=""><span class="choice-label px-6">なし</span></label></div></div><div id="bird-infection-details" class="hidden mt-4 space-y-3 p-4 border rounded-lg bg-gray-50"><div class="grid grid-cols-3 items-center gap-2"><span class="font-medium text-gray-700">PBFD</span><label><input type="radio" name="bird_pbfd_result" value="positive" class="sr-only"><span class="choice-label !p-2">陽性</span></label><label><input type="radio" name="bird_pbfd_result" value="negative" class="sr-only"><span class="choice-label !p-2">陰性</span></label></div><div class="grid grid-cols-3 items-center gap-2"><span class="font-medium text-gray-700">BFD</span><label><input type="radio" name="bird_bfd_result" value="positive" class="sr-only"><span class="choice-label !p-2">陽性</span></label><label><input type="radio" name="bird_bfd_result" value="negative" class="sr-only"><span class="choice-label !p-2">陰性</span></label></div><div class="grid grid-cols-3 items-center gap-2"><span class="font-medium text-gray-700">オウム病</span><label><input type="radio" name="bird_chlamydia_result" value="positive" class="sr-only"><span class="choice-label !p-2">陽性</span></label><label><input type="radio" name="bird_chlamydia_result" value="negative" class="sr-only"><span class="choice-label !p-2">陰性</span></label></div></div></div></div>
+                    <div id="reptile_amphibian-section" class="animal-specific-section mt-6 hidden"><h3 class="text-lg font-semibold text-gray-700 mt-6 border-l-4 border-lime-600 pl-3 mb-4">爬虫類・両生類の詳細情報</h3><div class="space-y-4"><label class="font-medium text-gray-700">飼育環境</label><input type="text" name="rep_amp_env" class="form-input mt-1" placeholder="ケージサイズ、床材、水槽など"><label class="font-medium text-gray-700">掃除頻度</label><input type="text" name="rep_amp_cleaning" class="form-input mt-1"><label class="font-medium text-gray-700">温度・湿度の管理</label><input type="text" name="rep_amp_temp" class="form-input mt-1" placeholder="ヒーター・加湿器の種類、設定温度など"><label class="font-medium text-gray-700">紫外線ライトの使用</label><div class="flex gap-4 mt-1"><label><input type="radio" name="rep_amp_uv" value="yes" class="sr-only"><span class="choice-label px-6">あり</span></label><label><input type="radio" name="rep_amp_uv" value="no" class="sr-only"><span class="choice-label px-6">なし</span></label></div><label class="font-medium text-gray-700">食事内容</label><input type="text" name="rep_amp_food" class="form-input mt-1" placeholder="昆虫、野菜、配合飼料、給餌頻度など"><label class="font-medium text-gray-700">産卵歴 (メスの場合)</label><div class="flex gap-4 mt-1"><label><input type="radio" name="rep_amp_egg" value="yes" class="sr-only"><span class="choice-label px-6">あり</span></label><label><input type="radio" name="rep_amp_egg" value="no" class="sr-only"><span class="choice-label px-6">なし</span></label><label><input type="radio" name="rep_amp_egg" value="na" class="sr-only"><span class="choice-label px-6">不明/オス</span></label></div><label class="font-medium text-gray-700">寄生虫検査・予防歴</label><div class="flex gap-4 mt-1"><label><input type="radio" name="rep_amp_parasite" value="yes" class="sr-only"><span class="choice-label px-6">あり</span></label><label><input type="radio" name="rep_amp_parasite" value="no" class="sr-only"><span class="choice-label px-6">なし</span></label></div></div></div>
+
+                </div>
+
+                <!-- ナビゲーションボタン -->
+                <div class="flex justify-between mt-8 no-print">
+                    <button type="button" id="prev-btn" class="bg-gray-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-gray-600 transition-colors disabled:bg-gray-300">戻る</button>
+                    <button type="button" id="next-btn" class="bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 transition-colors">次へ</button>
+                    <button type="submit" id="submit-btn" class="bg-green-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-green-700 transition-colors hidden">送信</button>
+                </div>
+                <div id="validation-message" class="text-red-500 text-center mt-4 h-6"></div>
+            </form>
+        </div>
+        
+        <!-- ===== 印刷用フォームコンテナ ===== -->
+        <div id="print-form-container" class="hidden">
+            <header class="flex justify-between items-center mb-6 no-print">
+                <h1 class="text-2xl sm:text-3xl font-bold text-gray-700">初診問診票 (印刷用)</h1>
+                <div class="flex items-center gap-4">
+                     <button id="back-to-choice-btn" class="text-gray-500 hover:text-blue-600 transition-colors"><i class="fas fa-arrow-left fa-lg mr-2"></i>選択に戻る</button>
+                    <button onclick="window.print()" class="text-white bg-blue-600 font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors"><i class="fas fa-print mr-2"></i>この内容で印刷</button>
+                </div>
+            </header>
+            <div id="print-animal-choice" class="mb-6 p-4 border rounded-lg bg-gray-50 no-print">
+                <label for="print-animal-type-select" class="font-medium text-gray-700 block mb-2">1. 印刷したい動物の種類を選択してください。</label>
+                <div class="flex gap-4">
+                    <select id="print-animal-type-select" class="form-select flex-grow">
+                        <option value="">選択してください</option>
+                        <option value="dog">犬</option>
+                        <option value="cat">猫</option>
+                        <option value="rabbit">うさぎ</option>
+                        <option value="small_mammal">小型哺乳類</option>
+                        <option value="bird">鳥類</option>
+                        <option value="reptile_amphibian">爬虫類・両生類</option>
+                    </select>
+                </div>
+            </div>
+            <div id="printable-area" class="hidden"></div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const initialScreen = document.getElementById('initial-choice-screen');
+            const webFormContainer = document.getElementById('web-form-container');
+            const printFormContainer = document.getElementById('print-form-container');
+            
+            const startWebBtn = document.getElementById('start-web-btn');
+            const startPrintBtn = document.getElementById('start-print-btn');
+            const backToChoiceBtn = document.getElementById('back-to-choice-btn');
+            const webBackToChoiceBtn = document.getElementById('web-back-to-choice-btn');
+
+            startWebBtn.addEventListener('click', () => {
+                initialScreen.classList.add('hidden');
+                webFormContainer.classList.remove('hidden');
+                setupWebForm();
+            });
+
+            startPrintBtn.addEventListener('click', () => {
+                initialScreen.classList.add('hidden');
+                printFormContainer.classList.remove('hidden');
+                setupPrintForm();
+            });
+
+            const goBackToChoice = () => {
+                printFormContainer.classList.add('hidden');
+                webFormContainer.classList.add('hidden');
+                initialScreen.classList.remove('hidden');
+                // Reset forms
+                document.getElementById('medical-form').reset();
+                const animalTypeSelect = document.getElementById('animal-type');
+                if(animalTypeSelect) animalTypeSelect.dispatchEvent(new Event('change'));
+                document.getElementById('printable-area').innerHTML = '';
+                document.getElementById('printable-area').classList.add('hidden');
+                document.getElementById('print-animal-type-select').value = '';
+            };
+
+            backToChoiceBtn.addEventListener('click', goBackToChoice);
+            webBackToChoiceBtn.addEventListener('click', goBackToChoice);
+
+            function setupWebForm() {
+                let currentStep = 1;
+                const totalSteps = 5;
+                const form = document.getElementById('medical-form');
+                const steps = form.querySelectorAll('.step');
+                const progressBar = document.getElementById('progress-bar');
+                const nextBtn = document.getElementById('next-btn');
+                const prevBtn = document.getElementById('prev-btn');
+                const submitBtn = document.getElementById('submit-btn');
+                const validationMessage = document.getElementById('validation-message');
+                const animalTypeSelect = document.getElementById('animal-type');
+                
+                const birdInfectionRadios = document.querySelectorAll('input[name="bird_infection_test"]');
+                const birdInfectionDetails = document.getElementById('bird-infection-details');
+                const insuranceRadios = document.querySelectorAll('input[name="insurance_status"]');
+                const insuranceCompanyContainer = document.getElementById('insurance-company-container');
+                const cohabitationRadios = document.querySelectorAll('input[name="cohabitation"]');
+                const cohabitationDetailsContainer = document.getElementById('cohabitation-details-container');
+                const exoticConsentSection = document.getElementById('exotic-consent-section');
+
+                insuranceRadios.forEach(radio => {
+                    radio.addEventListener('change', (e) => {
+                        insuranceCompanyContainer.classList.toggle('hidden', e.target.value !== 'yes');
+                    });
+                });
+
+                cohabitationRadios.forEach(radio => {
+                    radio.addEventListener('change', (e) => {
+                        cohabitationDetailsContainer.classList.toggle('hidden', e.target.value !== 'yes');
+                    });
+                });
+
+                birdInfectionRadios.forEach(radio => {
+                    radio.addEventListener('change', (e) => {
+                        if (e.target.value === 'yes') {
+                            birdInfectionDetails.classList.remove('hidden');
+                        } else {
+                            birdInfectionDetails.classList.add('hidden');
+                            birdInfectionDetails.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
+                        }
+                    });
+                });
+
+                animalTypeSelect.addEventListener('change', function() {
+                    const selectedType = this.value;
+                    document.querySelectorAll('.animal-specific-section').forEach(section => section.classList.add('hidden'));
+                    
+                    if (selectedType === 'dog' || selectedType === 'cat') {
+                        document.getElementById('dog-cat-section').classList.remove('hidden');
+                        exoticConsentSection.classList.add('hidden');
+                    } else if (selectedType) {
+                        const section = document.getElementById(selectedType + '-section');
+                        if(section) section.classList.remove('hidden');
+                        exoticConsentSection.classList.remove('hidden');
+                    } else {
+                        exoticConsentSection.classList.add('hidden');
+                    }
+                });
+
+                const updateButtons = () => {
+                    prevBtn.disabled = currentStep === 1;
+                    nextBtn.classList.toggle('hidden', currentStep === totalSteps);
+                    submitBtn.classList.toggle('hidden', currentStep !== totalSteps);
+                    if (currentStep === 1) {
+                        const consentCheckboxes = steps[0].querySelectorAll('input[name="consent"]');
+                        const allChecked = Array.from(consentCheckboxes).every(cb => cb.checked);
+                        nextBtn.disabled = !allChecked;
+                    } else {
+                        nextBtn.disabled = false;
+                    }
+                };
+                
+                const showStep = (stepNumber) => {
+                    steps.forEach((step, index) => step.classList.toggle('active', index + 1 === stepNumber));
+                    progressBar.style.width = `${((stepNumber - 1) / (totalSteps - 1)) * 100}%`;
+                    currentStep = stepNumber;
+                    updateButtons();
+                    window.scrollTo(0, 0);
+                };
+
+                const validateStep = (stepNumber) => {
+                    const currentStepElement = document.getElementById(`step-${stepNumber}`);
+                    let isValid = true;
+                    validationMessage.textContent = '';
+                    
+                    if (stepNumber === 1) {
+                        const consentCheckboxes = currentStepElement.querySelectorAll('input[name="consent"]');
+                        isValid = Array.from(consentCheckboxes).every(cb => cb.checked);
+                    } else {
+                        const inputs = currentStepElement.querySelectorAll('input[required], select[required], textarea[required]');
+                        for (const input of inputs) {
+                            if (input.type === 'radio') {
+                                if (!form.querySelector(`input[name="${input.name}"]:checked`)) {
+                                    isValid = false; break;
+                                }
+                            } else if (!input.value.trim()) {
+                                isValid = false; break;
+                            }
+                        }
+                    }
+
+                    if (isValid && stepNumber === 3) {
+                        const birthdate = document.getElementById('pet-birthdate').value;
+                        const estimatedAge = document.getElementById('pet-estimated-age').value;
+                        if (!birthdate && !estimatedAge) {
+                            isValid = false;
+                            validationMessage.textContent = '生年月日か推定年齢のどちらかを入力してください。';
+                        }
+                    }
+
+                    if (isValid && stepNumber === 5) {
+                        if (!exoticConsentSection.classList.contains('hidden')) {
+                            const exoticCheckboxes = exoticConsentSection.querySelectorAll('input[name="exotic_consent"]');
+                            if (!Array.from(exoticCheckboxes).every(cb => cb.checked)) {
+                                isValid = false;
+                                validationMessage.textContent = '追加の同意事項にすべてチェックしてください。';
+                            }
+                        }
+                    }
+
+                    if (!isValid && !validationMessage.textContent) {
+                        validationMessage.textContent = '必須項目をすべて入力または選択してください。';
+                    }
+                    return isValid;
+                };
+
+                nextBtn.addEventListener('click', () => { if (validateStep(currentStep)) showStep(currentStep + 1); });
+                prevBtn.addEventListener('click', () => { if (currentStep > 1) showStep(currentStep - 1); });
+                form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    if (validateStep(currentStep)) {
+                        alert('ご入力ありがとうございました。');
+                        console.log('Form data:', Object.fromEntries(new FormData(form)));
+                    }
+                });
+                
+                steps[0].querySelectorAll('input[name="consent"]').forEach(cb => cb.addEventListener('change', updateButtons));
+                showStep(1);
+            }
+            
+            function setupPrintForm() {
+                const animalSelect = document.getElementById('print-animal-type-select');
+                const printableArea = document.getElementById('printable-area');
+
+                const formContent = {
+                    consent_section: `<div class="print-view-section"><h2 class="text-xl font-bold text-gray-800 mb-4">夜間診療に関する同意事項</h2><p class="mb-4 text-sm">以下のすべての項目をご確認の上、同意のチェックをお願いします。</p><div class="space-y-3 text-sm"><h3 class="font-bold text-base mt-2">＜診療について＞</h3><p>□ 問診票をご記入いただいている間にも動物の状態に応じて処置を優先することがございます。その際の診療費用は概算をお伝えしますが前後する場合もございます。</p><p>□ 夜間の診療は最低人数で対応をさせていただいております。動物の状況や設備、人員の問題で、当院での治療が難しいと判断した場合近隣の受け入れ可能な夜間救急動物病院への転院をお願いする場合があります。</p><p>□ 動物の性格や咬んでしまう場合、激しく抵抗してしまう場合には診察が難しい場合があります。</p><p>□ 診察の順番は重症度によって前後する場合があります。</p><p>□ 病院のセキュリティ上診療中は許可がない限り院内での待機をお願いします。</p><p>□ 災害等の不可抗力による予測不能な不慮の事故、損傷、死亡、失踪が起こる可能性があります。</p><p>□ 夜間の対応として実施しているため診断をつけるのに必要な検査全てが行えない場合がございます。必ず診断をつけるものではなく、応急処置のみの対応になる場合もあることをご理解ください。</p><p>□ 診察中の写真撮影や動画撮影は許可なく行わないようお願いします。状況に応じては診察をお断りすることがあります。</p><p>□ エキゾチックアニマルなどの場合には特に、治療や検査の前に酸素室での一時入院が必要な場合があります。（別途費用）</p><h3 class="font-bold text-base mt-4">＜診療費について＞</h3><p>□ 診療費は当日のお支払いとなります。</p><p>□ 防犯の観点と会計上の観点からキャッシュレスでの決済をお願いしております。ご協力お願いいたします。</p><p>□ 飼い主様のいない動物（保護されたばかりの子など）の診療をご希望の場合、動物の引き取り、費用のお支払いは連れてこられた方の責任となります。</p><p>□ 野生鳥獣の診察は一切行っておりません（鳥獣保護管理法に基づき）。来院時に発覚した場合、診察をお断りさせていただくことをご了承ください。</p></div></div>`,
+                    common_top: `<div class="print-view-section"><h2 class="text-xl font-bold text-gray-800 mb-4">飼い主様の情報</h2><div class="space-y-4"><p><strong class="font-medium w-24 inline-block">氏名:</strong> <span class="print-view-input w-3/4"></span></p><p><strong class="font-medium w-24 inline-block">フリガナ:</strong> <span class="print-view-input w-3/4"></span></p><p><strong class="font-medium w-24 inline-block">住所:</strong> <span class="print-view-input w-full"></span></p><p><strong class="font-medium w-24 inline-block">電話番号:</strong> <span class="print-view-input w-3/4"></span></p><p><strong class="font-medium w-24 inline-block">メール:</strong> <span class="print-view-input w-3/4"></span></p></div></div><div class="print-view-section"><h2 class="text-xl font-bold text-gray-800 mb-4">動物の情報</h2><div class="space-y-4"><p><strong class="font-medium w-32 inline-block">名前 (フリガナ):</strong> <span class="print-view-input w-3/4"></span></p><p><strong class="font-medium w-32 inline-block">種類詳細:</strong> <span class="print-view-input w-3/4"></span></p><p><strong class="font-medium w-32 inline-block">性別:</strong><span class="print-view-choice">オス(去勢)</span> <span class="print-view-choice">オス(未去勢)</span> <span class="print-view-choice">メス(避妊)</span> <span class="print-view-choice">メス(未避妊)</span> <span class="print-view-choice">不明</span></p><p><strong class="font-medium w-32 inline-block">生年月日/年齢:</strong> <span class="print-view-input w-3/4"></span></p><p><strong class="font-medium w-32 inline-block">ペット保険:</strong><span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span> ( 会社名: <span class="print-view-input w-1/2"></span> )</p></div></div>`,
+                    common_bottom: `<div class="print-view-section"><h2 class="text-xl font-bold text-gray-800 mb-4">今回の症状と基本情報</h2><div><strong class="font-medium">主訴:</strong> <div class="print-view-textarea"></div></div><div class="mt-4"><strong class="font-medium">外出歴:</strong><span class="print-view-choice">完全室内(散歩無)</span> <span class="print-view-choice">完全室内(散歩有)</span> <span class="print-view-choice">外飼い</span> <span class="print-view-choice">放し飼い</span></div><div class="mt-4"><strong class="font-medium">食事内容:</strong><span class="print-view-choice">ドライ</span> <span class="print-view-choice">ウェット</span> <span class="print-view-choice">手作り</span><span class="print-view-input w-full mt-2"></span></div></div><div class="print-view-section"><h2 class="text-xl font-bold text-gray-800 mb-4">詳細情報</h2><div><strong class="font-medium">過去の疾患:</strong> <div class="print-view-textarea"></div></div><div class="mt-4"><strong class="font-medium">他の動物との同居:</strong><span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span><div class="print-view-textarea mt-2"></div></div></div><div class="print-view-section"><h2 class="text-xl font-bold text-gray-800 mb-4">その他</h2><p><strong class="font-medium">当院をどこで知りましたか？</strong></p><span class="print-view-choice">HP</span> <span class="print-view-choice">近所</span> <span class="print-view-choice">知人</span> <span class="print-view-choice">広告チラシ</span> その他: <span class="print-view-input w-1/2"></span></div>`,
+                    exotic_consent: `<div class="print-view-section"><h3 class="text-lg font-semibold text-gray-700">犬猫以外の動物の診療に関する追加同意事項</h3><div class="mt-2 space-y-2 text-sm"><p>□ エキゾチック動物（犬猫以外の動物）は体格・体力や動物種ごとの性質などから体調が急変する可能性があります。経験を積んだ獣医師が細心の注意を持って処置、検査を実施しておりますが、処置や検査自体にリスクが伴うことを十分ご理解いただくことをお願いいたします。</p><p>□ 検査や処置の内容によってはお預かりの上で実施させて頂く場合がございますが、その点もご理解とご協力をお願いいたします。</p></div></div>`,
+                    'dog-cat': `<div class="print-view-section"><h3 class="text-lg font-semibold text-gray-700">予防歴（犬・猫）</h3><div class="mt-4 space-y-4 text-sm"><p><strong class="font-medium">混合ワクチン:</strong> <span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span> ( <span class="print-view-input w-20"></span> 種 )</p><p><strong class="font-medium">狂犬病ワクチン(犬):</strong> <span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span></p><p><strong class="font-medium">外部寄生虫予防:</strong> <span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span> ( 薬の名前: <span class="print-view-input w-48"></span> )</p></div></div>`,
+                    rabbit: `<div class="print-view-section"><h3 class="text-lg font-semibold text-gray-700">うさぎの詳細情報</h3><div class="mt-4 space-y-4 text-sm"><p><strong class="font-medium">飼育環境:</strong> <span class="print-view-choice">ケージ</span> <span class="print-view-choice">放し飼い</span> / 床材: <span class="print-view-input w-1/2"></span></p><p><strong class="font-medium">掃除頻度:</strong> <span class="print-view-input w-1/2"></span></p><p><strong class="font-medium">主食:</strong> <span class="print-view-choice">牧草</span> <span class="print-view-choice">ペレット</span> <span class="print-view-choice">野菜</span> / 嗜好性: <span class="print-view-input w-1/2"></span></p><p><strong class="font-medium">盲腸便の食糞行動:</strong> <span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span></p><p><strong class="font-medium">歯科処置歴:</strong> <span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span></p><p><strong class="font-medium">消化管うっ滞歴:</strong> <span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span></p><p><strong class="font-medium">寄生虫予防:</strong> <span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span></p></div></div>`,
+                    small_mammal: `<div class="print-view-section"><h3 class="text-lg font-semibold text-gray-700">小型哺乳類の詳細情報</h3><div class="mt-4 space-y-4 text-sm"><p class="font-semibold">フェレット:</p><p><strong class="font-medium">ワクチン接種歴:</strong> <span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span></p><p><strong class="font-medium">外部寄生虫予防:</strong> <span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span></p><p class="font-semibold mt-4 pt-2 border-t">ハムスター・モルモット等:</p><p><strong class="font-medium">飼育環境(床材・ケージ):</strong><span class="print-view-input w-3/4"></span></p><p><strong class="font-medium">食事内容:</strong><span class="print-view-input w-3/4"></span></p><p><strong class="font-medium">活動パターン:</strong> <span class="print-view-choice">夜行性</span> <span class="print-view-choice">昼行性</span></p><p class="font-semibold mt-4 pt-2 border-t">その他哺乳類:</p><div><strong class="font-medium">食事・寄生虫予防:</strong><div class="print-view-textarea"></div></div></div></div>`,
+                    bird: `<div class="print-view-section"><h3 class="text-lg font-semibold text-gray-700">鳥類の詳細情報</h3><div class="mt-4 space-y-4 text-sm"><p><strong class="font-medium">飼育環境(ケージ/放鳥時間/床材):</strong> <span class="print-view-input w-3/4"></span></p><p><strong class="font-medium">掃除頻度:</strong> <span class="print-view-input w-3/4"></span></p><p><strong class="font-medium">温度・湿度:</strong> <span class="print-view-input w-3/4"></span></p><p><strong class="font-medium">環境変化:</strong> <span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span> / 詳細: <span class="print-view-input w-1/2"></span></p><p><strong class="font-medium">食事内容:</strong> <span class="print-view-input w-3/4"></span></p><p><strong class="font-medium">産卵歴:</strong> <span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span> <span class="print-view-choice">不明/オス</span></p><div><strong class="font-medium">感染症検査歴:</strong> <span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span><div class="pl-6 mt-2 space-y-1"><p><strong>PBFD:</strong> <span class="print-view-choice">陽性</span> <span class="print-view-choice">陰性</span></p><p><strong>BFD:</strong> <span class="print-view-choice">陽性</span> <span class="print-view-choice">陰性</span></p><p><strong>オウム病:</strong> <span class="print-view-choice">陽性</span> <span class="print-view-choice">陰性</span></p></div></div></div></div>`,
+                    reptile_amphibian: `<div class="print-view-section"><h3 class="text-lg font-semibold text-gray-700">爬虫類・両生類の詳細情報</h3><div class="mt-4 space-y-4 text-sm"><p><strong class="font-medium">飼育環境(ケージサイズ/床材等):</strong> <span class="print-view-input w-3/4"></span></p><p><strong class="font-medium">掃除頻度:</strong> <span class="print-view-input w-3/4"></span></p><p><strong class="font-medium">温度・湿度管理:</strong> <span class="print-view-input w-3/4"></span></p><p><strong class="font-medium">紫外線ライト:</strong> <span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span></p><p><strong class="font-medium">食事内容/給餌頻度:</strong> <span class="print-view-input w-3/4"></span></p><p><strong class="font-medium">産卵歴:</strong> <span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span> <span class="print-view-choice">不明/オス</span></p><p><strong class="font-medium">寄生虫検査/予防歴:</strong> <span class="print-view-choice">あり</span> <span class="print-view-choice">なし</span></p></div></div>`
+                };
+                
+                animalSelect.addEventListener('change', function() {
+                    const selected = this.value;
+                    if (!selected) {
+                        printableArea.classList.add('hidden');
+                        return;
+                    }
+                    
+                    let specificContent = '';
+                    let exoticConsentHTML = '';
+                    if (selected === 'dog' || selected === 'cat') {
+                        specificContent = formContent['dog-cat'];
+                    } else if (formContent[selected]) {
+                        specificContent = formContent[selected];
+                        exoticConsentHTML = formContent.exotic_consent;
+                    }
+
+                    printableArea.innerHTML = formContent.consent_section + formContent.common_top + formContent.common_bottom + exoticConsentHTML + specificContent;
+                    printableArea.classList.remove('hidden');
+                });
+            }
+        });
+    </script>
+</body>
+</html>
+
