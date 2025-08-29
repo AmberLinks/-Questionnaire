@@ -241,6 +241,11 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+            // ここにデプロイしたGASのウェブアプリURLを貼り付け
+            const gasWebAppUrl = 'ここにデプロイしたGASのウェブアプリURLを貼り付け';
+            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+
             // Element Definitions
             const initialScreen = document.getElementById('initial-choice-screen');
             const webFormContainer = document.getElementById('web-form-container');
@@ -389,25 +394,52 @@
 
                 editBtn.addEventListener('click', () => confirmationModal.classList.add('hidden'));
 
-                confirmSubmitBtn.addEventListener('click', async () => {
+                confirmSubmitBtn.addEventListener('click', () => {
+                    if (gasWebAppUrl === 'https://script.google.com/macros/s/AKfycbz7F0f_AEXmD4f8PHV4H7p0yhuMh4ttJjKvLKJcL6qNVxki2tzQEAdTByKqPqyuOHuWig/exec') {
+                        alert('GASのウェブアプリURLが設定されていません。scriptタグ内のURLを更新してください。');
+                        return;
+                    }
+
                     confirmSubmitBtn.disabled = true;
                     confirmSubmitBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>送信中...`;
                     
-                    try {
-                        // In a real application, you would send data to a server here.
-                        console.log('Form data submitted:', Object.fromEntries(new FormData(form)));
-                        await sendConfirmationEmail(new FormData(form));
-                        
-                        webFormContainer.classList.add('hidden');
-                        confirmationModal.classList.add('hidden');
-                        thankYouScreen.classList.remove('hidden');
-                    } catch (error) {
+                    const formDataObject = {};
+                    const formData = new FormData(form);
+                    formData.forEach((value, key) => {
+                        if (formDataObject.hasOwnProperty(key)) {
+                            if (!Array.isArray(formDataObject[key])) {
+                                formDataObject[key] = [formDataObject[key]];
+                            }
+                            formDataObject[key].push(value);
+                        } else {
+                            formDataObject[key] = value;
+                        }
+                    });
+
+                    fetch(gasWebAppUrl, {
+                        method: 'POST',
+                        body: JSON.stringify(formDataObject),
+                        headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.result === 'success') {
+                            console.log('Success:', data);
+                            webFormContainer.classList.add('hidden');
+                            confirmationModal.classList.add('hidden');
+                            thankYouScreen.classList.remove('hidden');
+                        } else {
+                            throw new Error(data.message || 'Unknown error from GAS');
+                        }
+                    })
+                    .catch(error => {
                         console.error("Submission failed:", error);
                         alert("送信に失敗しました。");
-                    } finally {
+                    })
+                    .finally(() => {
                         confirmSubmitBtn.disabled = false;
                         confirmSubmitBtn.textContent = 'この内容で送信';
-                    }
+                    });
                 });
                 
                 showStep(1);
@@ -425,12 +457,15 @@
                     chiefComplaint: "今回の主訴", "outdoor-history": "外出歴", food_type: "食事内容", food_details: "食事詳細",
                     pastIllness: "過去の疾患", cohabitation: "他の動物との同居", cohabitation_details: "同居動物の詳細", how_heard: "当院を知ったきっかけ", how_heard_other: "その他（きっかけ）",
                     dog_cat_mixed_vaccine: "混合ワクチン", dog_cat_mixed_vaccine_detail: "混合ワクチン詳細", dog_rabies_vaccine: "狂犬病ワクチン", dog_cat_parasite: "外部寄生虫予防", dog_cat_parasite_detail: "予防薬",
-                    // Add other labels as needed
+                    rabbit_env: 'うさぎ飼育環境', rabbit_env_floor: 'うさぎ床材', rabbit_cleaning: 'うさぎ掃除頻度', rabbit_food: 'うさぎ主食', rabbit_food_pref: 'うさぎ嗜好性', rabbit_cecotrophy: '盲腸便の食糞', rabbit_dental: '歯科処置歴', rabbit_gi_stasis: '消化管うっ滞歴', rabbit_parasite: 'うさぎ寄生虫予防',
+                    ferret_vaccine: 'フェレットワクチン', ferret_parasite: 'フェレット寄生虫予防', rodent_env: 'げっ歯類飼育環境', rodent_cleaning: 'げっ歯類掃除頻度', rodent_food: 'げっ歯類食事内容', rodent_activity: '活動パターン', other_mammal_details: 'その他哺乳類詳細',
+                    bird_env: '鳥飼育環境', bird_cleaning: '鳥掃除頻度', bird_temp_humidity: '温度湿度', bird_env_change: '鳥環境変化', bird_env_change_detail: '鳥環境変化詳細', bird_food: '鳥食事内容', bird_egg: '産卵歴', bird_infection_test: '感染症検査歴', bird_pbfd_result: 'PBFD結果', bird_bfd_result: 'BFD結果', bird_chlamydia_result: 'オウム病結果',
+                    rep_amp_env: '爬虫類飼育環境', rep_amp_cleaning: '爬虫類掃除頻度', rep_amp_temp: '爬虫類温度湿度', rep_amp_uv: '紫外線ライト', rep_amp_food: '爬虫類食事内容', rep_amp_egg: '爬虫類産卵歴', rep_amp_parasite: '爬虫類寄生虫予防'
                 };
 
                 const groupedData = {};
                 formData.forEach((value, key) => {
-                    if (!value) return;
+                    if (!value || key === 'consent' || key === 'exotic_consent') return;
                     const el = form.elements[key];
                     if (el && el.type === 'checkbox') {
                         if (!groupedData[key]) groupedData[key] = [];
@@ -451,22 +486,6 @@
                 }
 
                 summaryContainer.innerHTML = html || '入力されたデータはありません。';
-            }
-
-            function sendConfirmationEmail(formData) {
-                return new Promise((resolve) => {
-                    const email = formData.get('email');
-                    if (email) {
-                        console.log(`Simulating sending confirmation email to ${email}...`);
-                        setTimeout(() => {
-                            console.log("Email sent successfully (simulated).");
-                            resolve();
-                        }, 1000);
-                    } else {
-                        console.log("No email address, skipping confirmation.");
-                        resolve();
-                    }
-                });
             }
 
             // Print Form Logic
